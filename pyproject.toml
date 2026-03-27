@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyhomecast"
+version = "0.1.0"
+description = "Async Python client for the Homecast REST API"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+authors = [
+    {name = "Parob", email = "hello@homecast.cloud"},
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "aiohttp>=3.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "aioresponses>=0.7",
+]
+
+[project.urls]
+Homepage = "https://github.com/parob/pyhomecast"
+Documentation = "https://docs.homecast.cloud"
+
+[tool.setuptools.packages.find]
+where = ["src"]
