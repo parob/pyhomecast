@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyhomecast"
-version = "0.1.0"
-description = "Async Python client for the Homecast REST API"
+version = "0.2.0"
+description = "Async Python client for the Homecast API"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
