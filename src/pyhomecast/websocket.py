@@ -46,6 +46,7 @@ class HomecastWebSocket:
         session: aiohttp.ClientSession,
         api_url: str = DEFAULT_API_URL,
         device_id: str = "",
+        community: bool = False,
     ) -> None:
         self._session = session
         self._api_url = api_url.rstrip("/")
@@ -57,6 +58,7 @@ class HomecastWebSocket:
         self._tasks: list[asyncio.Task[None]] = []
         self._closing = False
         self._reconnect_delay = 1.0
+        self._community = community
 
     @property
     def connected(self) -> bool:
@@ -109,6 +111,15 @@ class HomecastWebSocket:
         self._reconnect_delay = 1.0
         _LOGGER.info("WebSocket connected to %s", self._api_url)
 
+        # Community mode: authenticate via protocol message
+        if self._community and self._token:
+            await self._send({
+                "id": str(uuid.uuid4()),
+                "type": "request",
+                "action": "authenticate",
+                "payload": {"token": self._token},
+            })
+
         # Start background tasks
         self._tasks = [
             asyncio.create_task(self._message_loop()),
@@ -145,7 +156,7 @@ class HomecastWebSocket:
             "payload": {"scopes": scopes, "ttl": _SUBSCRIPTION_TTL},
         }
         await self._send(msg)
-        _LOGGER.debug("Subscribed to %d home(s)", len(home_keys))
+        _LOGGER.debug("Subscribed to %d home(s): %s", len(home_keys), home_keys)
 
         # Start renewal task if not already running
         if not any(t for t in self._tasks if not t.done() and t.get_name() == "renew"):
@@ -181,6 +192,7 @@ class HomecastWebSocket:
     def _handle_message(self, data: dict[str, Any]) -> None:
         """Process a single incoming message."""
         msg_type = data.get("type", "")
+        _LOGGER.debug("WS recv: type=%s keys=%s", msg_type, list(data.keys())[:5])
 
         if msg_type == "ping":
             asyncio.create_task(self._send({"type": "pong"}))
@@ -198,8 +210,12 @@ class HomecastWebSocket:
             return
 
         # Forward broadcasts to callback
-        if msg_type in _BROADCAST_TYPES and self._callback:
-            self._callback(data)
+        if msg_type in _BROADCAST_TYPES:
+            if self._callback:
+                _LOGGER.debug("Forwarding %s to callback", msg_type)
+                self._callback(data)
+            else:
+                _LOGGER.warning("Broadcast %s received but no callback set!", msg_type)
 
     async def _ping_loop(self) -> None:
         """Send periodic pings to keep the session alive."""
@@ -260,6 +276,13 @@ class HomecastWebSocket:
         """Build the WebSocket URL with query parameters."""
         parsed = urlparse(self._api_url)
         ws_scheme = "wss" if parsed.scheme == "https" else "ws"
+
+        if self._community:
+            # Community mode: WS runs on HTTP port + 1, no path or query params
+            host = parsed.hostname or "localhost"
+            port = (parsed.port or 5656) + 1
+            return f"{ws_scheme}://{host}:{port}"
+
         params = urlencode({
             "token": self._token or "",
             "device_id": self._device_id,

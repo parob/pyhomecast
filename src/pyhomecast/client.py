@@ -122,8 +122,22 @@ class HomecastClient:
             updates: Nested dict {home_key: {room_key: {accessory_key: {prop: value}}}}
 
         Returns the API response.
+
+        Raises:
+            HomecastError: If the server reports any failed updates.
         """
-        return await self._request("POST", "/rest/state", json=updates)
+        result = await self._request("POST", "/rest/state", json=updates)
+        # Server returns 200 even on failure — check response body
+        failed = result.get("failed", 0)
+        updated = result.get("updated", 0)
+        if failed > 0:
+            errors = result.get("errors", [])
+            error_msg = "; ".join(errors) if errors else "Unknown error"
+            raise HomecastError(f"Failed to set state: {error_msg}")
+        if updated == 0 and failed == 0:
+            msg = result.get("message", "No updates applied")
+            raise HomecastError(f"Set state returned no updates: {msg}")
+        return result
 
     async def run_scene(self, home: str, name: str) -> dict[str, Any]:
         """Execute a scene by name.
@@ -153,7 +167,7 @@ class HomecastClient:
                 "client_name": client_name,
                 "grant_types": ["authorization_code", "refresh_token"],
                 "response_types": ["code"],
-                "scope": "mcp:read mcp:write",
+                "scope": "read write",
                 "token_endpoint_auth_method": "client_secret_post",
             },
         )

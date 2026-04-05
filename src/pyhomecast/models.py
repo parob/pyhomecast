@@ -64,6 +64,9 @@ class HomecastHome:
     name: str
     """Human-readable home name."""
 
+    home_id: str = ""
+    """Full HomeKit UUID, e.g. 'EEBCDDC0-F66D-5BD2-8D0E-C28CEC3FB454'."""
+
 
 @dataclass
 class HomecastState:
@@ -74,6 +77,12 @@ class HomecastState:
 
     homes: dict[str, HomecastHome]
     """home_key -> HomecastHome mapping."""
+
+    group_members: dict[str, list[str]] = field(default_factory=dict)
+    """group unique_id -> list of member unique_ids."""
+
+    member_to_group: dict[str, str] = field(default_factory=dict)
+    """member unique_id -> group unique_id."""
 
     @staticmethod
     def from_api_response(raw: dict[str, Any]) -> HomecastState:
@@ -97,13 +106,19 @@ class HomecastState:
         """
         devices: dict[str, HomecastDevice] = {}
         homes: dict[str, HomecastHome] = {}
+        group_members: dict[str, list[str]] = {}
+        member_to_group: dict[str, str] = {}
+
+        # Extract home key → UUID mapping if available
+        home_ids: dict[str, str] = raw.get("_homes", {})
 
         for home_key, home_data in raw.items():
             if home_key.startswith("_") or not isinstance(home_data, dict):
                 continue
 
             home_name = _key_to_name(home_key)
-            homes[home_key] = HomecastHome(key=home_key, name=home_name)
+            home_id = home_ids.get(home_key, "")
+            homes[home_key] = HomecastHome(key=home_key, name=home_name, home_id=home_id)
 
             for room_key, room_data in home_data.items():
                 if room_key.startswith("_") or not isinstance(room_data, dict):
@@ -140,4 +155,21 @@ class HomecastState:
                         is_group=is_group,
                     )
 
-        return HomecastState(devices=devices, homes=homes)
+                    # Build group ↔ member mappings
+                    if is_group:
+                        members_data = acc_data.get("accessories", {})
+                        member_ids = [
+                            f"{home_key}.{room_key}.{mk}"
+                            for mk in members_data
+                            if not mk.startswith("_")
+                        ]
+                        group_members[unique_id] = member_ids
+                        for mid in member_ids:
+                            member_to_group[mid] = unique_id
+
+        return HomecastState(
+            devices=devices,
+            homes=homes,
+            group_members=group_members,
+            member_to_group=member_to_group,
+        )
